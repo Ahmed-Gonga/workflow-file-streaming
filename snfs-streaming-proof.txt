@@ -1,0 +1,4 @@
+[  389.089396] sNFS WRITE partial chunk: file=stream.txt offset=14 count=7 absolute=14
+[  389.089402] sNFS AVAILABLE update: file=stream.txt available_until=21
+[  389.269461] sNFS STREAMING: reader consumed available chunk [0 - 4096]
+[  389.269466] sNFS BLOCK prototype: requested_end=4096 available_until=21
