@@ -1,0 +1,34 @@
+diff --git a/fs/nfs/read.c b/fs/nfs/read.c
+index e1fe78d7b8d0..d4db23a1f349 100644
+--- a/fs/nfs/read.c
++++ b/fs/nfs/read.c
+@@ -148,6 +148,8 @@ static void nfs_read_completion(struct nfs_pgio_header *hdr)
+ 		struct folio *folio = nfs_page_to_folio(req);
+ 		unsigned long start = req->wb_pgbase;
+ 		unsigned long end = req->wb_pgbase + req->wb_bytes;
++		pr_info("sNFS READ partial chunk: start=%lu end=%lu bytes=%u\n",
++	start, end, req->wb_bytes);
+ 
+ 		if (test_bit(NFS_IOHDR_EOF, &hdr->flags)) {
+ 			/* note: regions of the page not covered by a
+diff --git a/fs/nfs/write.c b/fs/nfs/write.c
+index 3134bb17f3e3..1d89ae2bd47a 100644
+--- a/fs/nfs/write.c
++++ b/fs/nfs/write.c
+@@ -1304,10 +1304,13 @@ int nfs_update_folio(struct file *file, struct folio *folio,
+ 
+ 	nfs_inc_stats(inode, NFSIOS_VFSUPDATEPAGE);
+ 
+-	trace_nfs_update_folio(inode, offset, count);
++trace_nfs_update_folio(inode, offset, count);
+ 
+-	dprintk("NFS:       nfs_update_folio(%pD2 %d@%lld)\n", file, count,
+-		(long long)(folio_pos(folio) + offset));
++pr_info("sNFS WRITE partial chunk: file=%pD offset=%u count=%u absolute=%lld\n",
++	file, offset, count, (long long)(folio_pos(folio) + offset));
++
++dprintk("NFS:       nfs_update_folio(%pD2 %d@%lld)\n", file, count,
++	(long long)(folio_pos(folio) + offset));
+ 
+ 	if (!count)
+ 		goto out;

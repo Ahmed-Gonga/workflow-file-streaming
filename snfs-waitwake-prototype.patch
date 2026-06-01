@@ -1,0 +1,85 @@
+diff --git a/fs/nfs/read.c b/fs/nfs/read.c
+index d4db23a1f349..ea9fb9f931ac 100644
+--- a/fs/nfs/read.c
++++ b/fs/nfs/read.c
+@@ -7,7 +7,7 @@
+  * Partial copy of Linus' read cache modifications to fs/nfs/file.c
+  * modified for async RPC by okir@monad.swb.de
+  */
+-
++#include <linux/delay.h>
+ #include <linux/time.h>
+ #include <linux/kernel.h>
+ #include <linux/errno.h>
+@@ -29,8 +29,13 @@
+ #include "pnfs.h"
+ #include "nfstrace.h"
+ #include "delegation.h"
++#include <linux/wait.h>
++#include <linux/sched/signal.h>
+ 
+ #define NFSDBG_FACILITY		NFSDBG_PAGECACHE
++extern loff_t snfs_available_until;
++extern wait_queue_head_t snfs_wait_queue;
++
+ 
+ const struct nfs_pgio_completion_ops nfs_async_read_completion_ops;
+ static const struct nfs_rw_ops nfs_rw_read_ops;
+@@ -148,9 +153,19 @@ static void nfs_read_completion(struct nfs_pgio_header *hdr)
+ 		struct folio *folio = nfs_page_to_folio(req);
+ 		unsigned long start = req->wb_pgbase;
+ 		unsigned long end = req->wb_pgbase + req->wb_bytes;
+-		pr_info("sNFS READ partial chunk: start=%lu end=%lu bytes=%u\n",
+-	start, end, req->wb_bytes);
+-
++		
++	/* sNFS prototype: reader consumes an available chunk */
++		pr_info("sNFS STREAMING: reader consumed available chunk [%lu - %lu]\n", start, end);
++	if (end > snfs_available_until) {
++	pr_info("sNFS BLOCK: waiting requested_end=%lu available_until=%lld\n",
++		end, (long long)snfs_available_until);
++
++	wait_event_interruptible(snfs_wait_queue,
++		end <= snfs_available_until);
++
++	pr_info("sNFS UNBLOCK: requested_end=%lu available_until=%lld\n",
++		end, (long long)snfs_available_until);
++}
+ 		if (test_bit(NFS_IOHDR_EOF, &hdr->flags)) {
+ 			/* note: regions of the page not covered by a
+ 			 * request are zeroed in nfs_read_add_folio
+diff --git a/fs/nfs/write.c b/fs/nfs/write.c
+index 1d89ae2bd47a..e297a936dedc 100644
+--- a/fs/nfs/write.c
++++ b/fs/nfs/write.c
+@@ -44,6 +44,15 @@
+ #define MIN_POOL_WRITE		(32)
+ #define MIN_POOL_COMMIT		(4)
+ 
++#include <linux/wait.h>
++
++loff_t snfs_available_until = 0;
++EXPORT_SYMBOL_GPL(snfs_available_until);
++
++DECLARE_WAIT_QUEUE_HEAD(snfs_wait_queue);
++EXPORT_SYMBOL_GPL(snfs_wait_queue);
++
++
+ struct nfs_io_completion {
+ 	void (*complete)(void *data);
+ 	void *data;
+@@ -1308,7 +1317,14 @@ trace_nfs_update_folio(inode, offset, count);
+ 
+ pr_info("sNFS WRITE partial chunk: file=%pD offset=%u count=%u absolute=%lld\n",
+ 	file, offset, count, (long long)(folio_pos(folio) + offset));
++/* sNFS prototype: mark written region as available */
++snfs_available_until = folio_pos(folio) + offset + count;
++
++pr_info("sNFS AVAILABLE update: file=%pD available_until=%lld\n",
++	file, (long long)snfs_available_until);
+ 
++	wake_up_all(&snfs_wait_queue);
++	
+ dprintk("NFS:       nfs_update_folio(%pD2 %d@%lld)\n", file, count,
+ 	(long long)(folio_pos(folio) + offset));
+ 

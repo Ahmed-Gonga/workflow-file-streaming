@@ -1,0 +1,11 @@
+[  186.299204] sNFS WRITE partial chunk: file=stream.txt offset=21 count=7 absolute=21
+[  186.299214] sNFS AVAILABLE update: file=stream.txt available_until=28
+[  186.579011] sNFS STREAMING: reader consumed available chunk [0 - 4096]
+[  186.579016] sNFS BLOCK: waiting requested_end=4096 available_until=28
+[  460.189526] sNFS WRITE partial chunk: file=bigwrite.bin offset=0 count=4096 absolute=0
+[  460.189534] sNFS AVAILABLE update: file=bigwrite.bin available_until=4096
+[  460.189554] sNFS UNBLOCK: requested_end=4096 available_until=4096
+[  460.189586] sNFS WRITE partial chunk: file=stream.txt offset=28 count=4068 absolute=28
+[  460.189588] sNFS AVAILABLE update: file=stream.txt available_until=4096
+[  460.195646] sNFS WRITE partial chunk: file=bigwrite.bin offset=0 count=4096 absolute=4096
+[  460.195653] sNFS AVAILABLE update: file=bigwrite.bin available_until=8192

@@ -1,0 +1,7 @@
+[  213.981014] sNFS WRITE partial chunk: file=test.txt offset=0 count=11 absolute=0
+[  803.046036] sNFS READ partial chunk: start=0 end=4096 bytes=4096
+[ 2347.245136] sNFS READ partial chunk: start=0 end=4096 bytes=4096
+[ 2347.246418] sNFS WRITE partial chunk: file=test.txt offset=11 count=6 absolute=11
+[13941.518030] sNFS WRITE partial chunk: file=stream.txt offset=0 count=7 absolute=0
+[13941.560551] sNFS WRITE partial chunk: file=stream.txt offset=7 count=7 absolute=7
+[13941.678489] sNFS READ partial chunk: start=0 end=4096 bytes=4096
