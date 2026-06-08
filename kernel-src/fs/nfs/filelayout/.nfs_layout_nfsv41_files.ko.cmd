@@ -1,0 +1,1 @@
+savedcmd_filelayout/nfs_layout_nfsv41_files.ko := ld -r -m elf_x86_64 -z noexecstack --no-warn-rwx-segments --build-id=sha1  -T /home/g/linux/scripts/module.lds -o filelayout/nfs_layout_nfsv41_files.ko filelayout/nfs_layout_nfsv41_files.o filelayout/nfs_layout_nfsv41_files.mod.o .module-common.o

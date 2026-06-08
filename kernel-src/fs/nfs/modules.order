@@ -1,0 +1,7 @@
+nfs.o
+nfsv2.o
+nfsv3.o
+nfsv4.o
+filelayout/nfs_layout_nfsv41_files.o
+blocklayout/blocklayoutdriver.o
+flexfilelayout/nfs_layout_flexfiles.o
