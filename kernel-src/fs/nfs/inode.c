@@ -434,6 +434,16 @@ static void nfs_inode_init_regular(struct nfs_inode *nfsi)
 	atomic_long_set(&nfsi->commit_info.ncommit, 0);
 	atomic_set(&nfsi->commit_info.rpcs_out, 0);
 	mutex_init(&nfsi->commit_mutex);
+
+	/*
+	 * sNFS: initialize per-inode streaming state for regular files.
+	 * Streaming is disabled by default and enabled selectively in file.c for
+	 * files that match the prototype streaming policy.
+	 */
+	spin_lock_init(&nfsi->snfs_lock);
+	nfsi->snfs_available_until = 0;
+	init_waitqueue_head(&nfsi->snfs_wait_queue);
+	nfsi->snfs_enabled = false;
 }
 
 static void nfs_inode_init_dir(struct nfs_inode *nfsi)

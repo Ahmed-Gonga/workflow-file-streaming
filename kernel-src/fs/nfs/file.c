@@ -45,6 +45,23 @@
 
 #define NFSDBG_FACILITY		NFSDBG_FILE
 
+/*
+ * sNFS prototype policy for hybrid execution.
+ *
+ * Only files whose name ends in ".stream" are opted into streaming semantics.
+ * All other files keep normal NFS behaviour. This gives a simple, explicit
+ * mechanism for testing mixed workflows where only selected task pairs stream.
+ */
+static bool snfs_file_should_stream(struct file *filp)
+{
+	const struct qstr *name = &file_dentry(filp)->d_name;
+	static const char suffix[] = ".stream";
+	size_t suffix_len = sizeof(suffix) - 1;
+
+	return name->len >= suffix_len &&
+	       !memcmp(name->name + name->len - suffix_len, suffix, suffix_len);
+}
+
 static const struct vm_operations_struct nfs_file_vm_ops;
 
 int nfs_check_flags(int flags)
@@ -72,8 +89,20 @@ nfs_file_open(struct inode *inode, struct file *filp)
 		return res;
 
 	res = nfs_open(inode, filp);
-	if (res == 0)
+	if (res == 0) {
+		struct nfs_inode *nfsi = NFS_I(inode);
+
 		filp->f_mode |= FMODE_CAN_ODIRECT;
+
+		if (snfs_file_should_stream(filp)) {
+			spin_lock(&nfsi->snfs_lock);
+			nfsi->snfs_enabled = true;
+			nfsi->snfs_available_until = 0;
+			spin_unlock(&nfsi->snfs_lock);
+
+			pr_info("sNFS ENABLE: file=%pD streaming enabled\n", filp);
+		}
+	}
 	return res;
 }
 

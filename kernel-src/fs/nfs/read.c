@@ -29,12 +29,8 @@
 #include "pnfs.h"
 #include "nfstrace.h"
 #include "delegation.h"
-#include <linux/wait.h>
-#include <linux/sched/signal.h>
 
 #define NFSDBG_FACILITY		NFSDBG_PAGECACHE
-extern loff_t snfs_available_until;
-extern wait_queue_head_t snfs_wait_queue;
 
 
 const struct nfs_pgio_completion_ops nfs_async_read_completion_ops;
@@ -151,21 +147,50 @@ static void nfs_read_completion(struct nfs_pgio_header *hdr)
 	while (!list_empty(&hdr->pages)) {
 		struct nfs_page *req = nfs_list_entry(hdr->pages.next);
 		struct folio *folio = nfs_page_to_folio(req);
+		struct inode *inode = folio->mapping->host;
+		struct nfs_inode *nfsi = NFS_I(inode);
 		unsigned long start = req->wb_pgbase;
 		unsigned long end = req->wb_pgbase + req->wb_bytes;
-		
-	/* sNFS prototype: reader consumes an available chunk */
-		pr_info("sNFS STREAMING: reader consumed available chunk [%lu - %lu]\n", start, end);
-	if (end > snfs_available_until) {
-	pr_info("sNFS BLOCK: waiting requested_end=%lu available_until=%lld\n",
-		end, (long long)snfs_available_until);
+		loff_t requested_end = folio_pos(folio) + end;
+		loff_t available_until;
 
-	wait_event_interruptible(snfs_wait_queue,
-		end <= snfs_available_until);
+		/*
+		 * sNFS: per-file streaming-aware read completion.
+		 *
+		 * If this inode was marked as streaming in file.c, the reader is only
+		 * allowed to continue when the requested byte range has been produced by
+		 * a writer. write.c advances nfsi->snfs_available_until and wakes this
+		 * inode's wait queue whenever new data becomes available.
+		 *
+		 * Non-streaming files bypass this block entirely and keep normal NFS
+		 * behaviour. This implements the hybrid execution model: selected black-box
+		 * producer/consumer pairs stream partial data, while other files do not.
+		 */
+		if (READ_ONCE(nfsi->snfs_enabled)) {
+			available_until = READ_ONCE(nfsi->snfs_available_until);
 
-	pr_info("sNFS UNBLOCK: requested_end=%lu available_until=%lld\n",
-		end, (long long)snfs_available_until);
-}
+			pr_info("sNFS READ-CHECK: fileid=%llu requested_end=%lld available_until=%lld\n",
+				(unsigned long long)nfsi->fileid,
+				(long long)requested_end,
+				(long long)available_until);
+
+			if (requested_end > available_until) {
+				pr_info("sNFS READ-WAIT: fileid=%llu requested_end=%lld available_until=%lld\n",
+					(unsigned long long)nfsi->fileid,
+					(long long)requested_end,
+					(long long)available_until);
+
+				wait_event_interruptible(nfsi->snfs_wait_queue,
+					requested_end <= READ_ONCE(nfsi->snfs_available_until) ||
+					!READ_ONCE(nfsi->snfs_enabled));
+
+				available_until = READ_ONCE(nfsi->snfs_available_until);
+				pr_info("sNFS READ-CONTINUE: fileid=%llu requested_end=%lld available_until=%lld\n",
+					(unsigned long long)nfsi->fileid,
+					(long long)requested_end,
+					(long long)available_until);
+			}
+		}
 		if (test_bit(NFS_IOHDR_EOF, &hdr->flags)) {
 			/* note: regions of the page not covered by a
 			 * request are zeroed in nfs_read_add_folio

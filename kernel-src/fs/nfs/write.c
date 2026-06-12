@@ -44,14 +44,6 @@
 #define MIN_POOL_WRITE		(32)
 #define MIN_POOL_COMMIT		(4)
 
-#include <linux/wait.h>
-
-loff_t snfs_available_until = 0;
-EXPORT_SYMBOL_GPL(snfs_available_until);
-
-DECLARE_WAIT_QUEUE_HEAD(snfs_wait_queue);
-EXPORT_SYMBOL_GPL(snfs_wait_queue);
-
 
 struct nfs_io_completion {
 	void (*complete)(void *data);
@@ -1313,20 +1305,45 @@ int nfs_update_folio(struct file *file, struct folio *folio,
 
 	nfs_inc_stats(inode, NFSIOS_VFSUPDATEPAGE);
 
-trace_nfs_update_folio(inode, offset, count);
+	trace_nfs_update_folio(inode, offset, count);
 
-pr_info("sNFS WRITE partial chunk: file=%pD offset=%u count=%u absolute=%lld\n",
-	file, offset, count, (long long)(folio_pos(folio) + offset));
-/* sNFS prototype: mark written region as available */
-snfs_available_until = folio_pos(folio) + offset + count;
+	/*
+	 * sNFS: per-file streaming-aware write progress.
+	 *
+	 * For streaming-enabled inodes, each local NFS write publishes the highest
+	 * produced byte offset and wakes readers waiting on the same inode. This is
+	 * the core of partial-file streaming for black-box workflows.
+	 *
+	 * Non-streaming files bypass this block and keep normal NFS behaviour.
+	 */
+	if (count) {
+		struct nfs_inode *nfsi = NFS_I(inode);
 
-pr_info("sNFS AVAILABLE update: file=%pD available_until=%lld\n",
-	file, (long long)snfs_available_until);
+		if (READ_ONCE(nfsi->snfs_enabled)) {
+			loff_t written_start = folio_pos(folio) + offset;
+			loff_t written_end = written_start + count;
+			loff_t available_until;
 
-	wake_up_all(&snfs_wait_queue);
-	
-dprintk("NFS:       nfs_update_folio(%pD2 %d@%lld)\n", file, count,
-	(long long)(folio_pos(folio) + offset));
+			spin_lock(&nfsi->snfs_lock);
+			if (written_end > nfsi->snfs_available_until)
+				nfsi->snfs_available_until = written_end;
+			available_until = nfsi->snfs_available_until;
+			spin_unlock(&nfsi->snfs_lock);
+
+			pr_info("sNFS WRITE partial chunk: file=%pD fileid=%llu offset=%u count=%u absolute=%lld\n",
+				file, (unsigned long long)nfsi->fileid, offset, count,
+				(long long)written_start);
+
+			pr_info("sNFS AVAILABLE update: file=%pD fileid=%llu available_until=%lld\n",
+				file, (unsigned long long)nfsi->fileid,
+				(long long)available_until);
+
+			wake_up_all(&nfsi->snfs_wait_queue);
+		}
+	}
+
+	dprintk("NFS:       nfs_update_folio(%pD2 %d@%lld)\n", file, count,
+		(long long)(folio_pos(folio) + offset));
 
 	if (!count)
 		goto out;
